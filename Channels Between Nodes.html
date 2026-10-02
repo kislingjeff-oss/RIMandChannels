@@ -1,0 +1,944 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
+<title>Channels Between Nodes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Figtree:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+<style>
+  /* Layout: a living cross-section of soil on the left (nodes above ground, channels as roots below), a field-manual panel on the right. */
+  :root {
+    color-scheme: dark;
+    --ground: #0f1316;
+    --panel: #191512;
+    --panel-2: #231c16;
+    --line: #3d3128;
+    --ink: #f0e8dd;
+    --ink-2: #c6b7a5;
+    --ink-3: #93826f;
+    --copper: #d9a05b;
+    --sage: #9cbf8f;
+    --clay: #d26d47;
+    --sky: #8db3d6;
+    --gold: #f2c94c;
+    --display: "Sora", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --body: "Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --label: "Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; overflow: hidden; }
+  .app { display: grid; grid-template-columns: minmax(0, 1fr) 430px; height: 100%; }
+  .stage-wrap { position: relative; min-width: 0; overflow: hidden; }
+  #scene { position: absolute; inset: 0; display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  #scene:active { cursor: grabbing; }
+  .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .lbl { position: absolute; left: 0; top: 0; white-space: nowrap; font-family: var(--label); font-size: 14px; line-height: 1.3; color: var(--ink); background: rgba(15, 19, 22, 0.78); border: 1px solid rgba(61, 49, 40, 0.9); padding: 3px 9px; border-radius: 3px; opacity: 0; transition: opacity .35s; }
+  .lbl.on { opacity: 1; }
+  .lbl .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
+  .brand { position: absolute; left: 20px; top: 16px; pointer-events: none; max-width: calc(100% - 40px); }
+  .brand h1 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 30px; line-height: 1; letter-spacing: 0.005em; text-wrap: balance; }
+  .brand h1 span { color: var(--copper); }
+  .brand p { margin: 7px 0 0; font-family: var(--mono); font-size: 12px; color: var(--ink-2); letter-spacing: 0.03em; }
+  .strata { position: absolute; left: 20px; bottom: 16px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-family: var(--mono); font-size: 12px; color: var(--ink-2); max-width: calc(100% - 40px); pointer-events: none; }
+  .strata i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .stacklist { position: absolute; right: 16px; top: 44px; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px 12px; box-shadow: 0 6px 20px rgba(0,0,0,.45); pointer-events: none; font-family: var(--body); }
+  .stacklist h4 { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+  .stacklist ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .stacklist li { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--ink); }
+  .stacklist li i { width: 22px; height: 10px; border-radius: 2px; flex: none; }
+  .stacklist p { margin: 8px 0 0; font-size: 12px; color: var(--ink-3); }
+  @media (max-width: 900px) { .stacklist { top: auto; bottom: 40px; right: 10px; padding: 8px 10px; } .stacklist li { font-size: 12px; } }
+  .hint { position: absolute; right: 16px; top: 18px; font-family: var(--mono); font-size: 12px; color: var(--ink-3); pointer-events: none; }
+
+  aside { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .steps { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; padding: 16px 20px 12px; border-bottom: 1px solid var(--line); }
+  .step { appearance: none; border: 1px solid var(--line); background: transparent; color: var(--ink-3); font-family: var(--mono); font-size: 13.5px; font-variant-numeric: tabular-nums; padding: 7px 0; border-radius: 3px; cursor: pointer; }
+  .step:hover { color: var(--ink); border-color: var(--ink-3); }
+  .step[aria-current="true"] { color: var(--panel); background: var(--copper); border-color: var(--copper); }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .content { padding: 20px 22px 8px; overflow-y: auto; flex: 1; min-height: 0; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2); display: flex; gap: 10px; align-items: center; }
+  .eyebrow .tag { color: var(--copper); }
+  h2 { font-family: var(--display); font-weight: 700; font-size: 26px; line-height: 1.15; margin: 8px 0 12px; text-wrap: balance; }
+  .content p { margin: 0 0 12px; max-width: 62ch; }
+  .content b { font-weight: 600; color: #fff6ea; }
+  .watch { font-family: var(--mono); font-size: 13.5px; color: var(--ink-2); background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 9px 11px; margin: 4px 0 14px; }
+  .watch b { color: var(--ink); font-weight: 500; }
+  blockquote { margin: 16px 0 14px; padding: 2px 0 2px 14px; border-left: 3px solid var(--copper); font-style: italic; font-size: 15px; color: #e6dccd; }
+  blockquote cite { display: block; margin-top: 6px; font-style: normal; font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+  blockquote cite a, .src a { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
+  blockquote cite a:hover, .src a:hover { color: var(--gold); }
+  .src { font-family: var(--mono); font-size: 12px; color: var(--ink-3); margin: -4px 0 14px; }
+  .note { font-size: 13.5px; color: var(--ink-2); border-top: 1px dashed var(--line); padding-top: 10px; margin-top: 6px; }
+
+  /* the interactive controls: large and pulsing so they read as things to press */
+  .ctrl { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 14px; }
+  .act { appearance: none; font-family: var(--mono); font-size: 15px; font-weight: 500; padding: 12px 18px; border-radius: 4px; border: 2px solid var(--copper); background: var(--panel-2); color: var(--ink); cursor: pointer; animation: actPulse 1.6s ease-in-out infinite; text-align: left; }
+  .act.warn { border-color: var(--clay); animation-name: actPulseWarn; }
+  .act.quiet { animation: none; border-color: var(--line); font-size: 13.5px; padding: 9px 13px; }
+  .act:hover { animation: none; background: var(--copper); color: #1b120a; }
+  .act.warn:hover { animation: none; background: var(--clay); color: #fff; }
+  .act.quiet:hover { background: var(--panel-2); color: var(--ink); border-color: var(--ink-3); }
+  .act[aria-pressed="true"] { animation: none; background: var(--copper); color: #1b120a; }
+  .act:disabled { opacity: .45; animation: none; cursor: default; }
+  @keyframes actPulse { 0%, 100% { background: var(--panel-2); box-shadow: 0 0 0 0 rgba(217,160,91,0); } 50% { background: #5a3d1c; box-shadow: 0 0 14px 2px rgba(217,160,91,.5); } }
+  @keyframes actPulseWarn { 0%, 100% { background: var(--panel-2); box-shadow: 0 0 0 0 rgba(210,109,71,0); } 50% { background: #5a2617; box-shadow: 0 0 14px 2px rgba(210,109,71,.55); } }
+  @media (prefers-reduced-motion: reduce) { .act, .act.warn { animation: none; background: #3a2a16; } }
+  .readout { font-family: var(--mono); font-size: 13.5px; color: var(--gold); min-height: 1.4em; margin: 0 0 12px; }
+
+  .seg { display: flex; gap: 6px; margin: 4px 0 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+  .chip { appearance: none; font-family: var(--label); font-size: 13.5px; padding: 6px 10px; border-radius: 3px; border: 1px solid var(--line); background: transparent; color: var(--ink-2); cursor: pointer; text-align: left; }
+  .chip:hover { border-color: var(--ink-3); color: var(--ink); }
+  .chip[aria-pressed="true"] { border-color: var(--copper); color: var(--ink); background: var(--panel-2); }
+  .card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px; margin: 0 0 14px; }
+  .card h3 { margin: 0 0 6px; font-family: var(--display); font-weight: 600; font-size: 17px; line-height: 1.2; }
+  .card dl { margin: 0; display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .card dt { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  .card dd { margin: 0; font-size: 15px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+  .pair div { min-width: 0; }
+  .pair .k { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  .pair .v { font-family: var(--display); font-size: 16px; font-weight: 600; line-height: 1.25; }
+  .pair .v.c { color: var(--copper); }
+  .pair .v.r { color: var(--sky); }
+
+  .qs { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; }
+  .qs li { font-size: 15px; padding-left: 14px; position: relative; }
+  .qs li::before { content: ""; position: absolute; left: 0; top: .62em; width: 6px; height: 6px; border-radius: 50%; background: var(--copper); }
+  .qs em { font-style: normal; color: var(--gold); font-weight: 600; }
+
+  .dial-row { display: grid; grid-template-columns: 112px 1fr; gap: 4px 12px; align-items: start; padding: 9px 0; border-top: 1px solid var(--line); }
+  .dial-row .nm { font-family: var(--mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); padding-top: 2px; }
+  .dial { grid-column: 1 / -1; position: relative; height: 8px; background: #2c241d; border-radius: 4px; }
+  .dial::after { content: ""; position: absolute; left: 50%; top: -3px; width: 1px; height: 14px; background: var(--ink-3); }
+  .dial i { position: absolute; top: 0; height: 8px; border-radius: 4px; transition: left .6s, width .6s, background .6s; }
+  .dial-row p { margin: 0; font-size: 15px; min-width: 0; }
+  .dial-key { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; color: var(--ink-3); margin: 2px 0 4px; }
+
+  .slider { display: grid; gap: 6px; margin: 4px 0 12px; }
+  .slider label { font-family: var(--mono); font-size: 13.5px; color: var(--ink-2); }
+  .slider input { width: 100%; accent-color: var(--copper); }
+
+  .check-group { margin: 0 0 14px; }
+  .check-group h3 { font-family: var(--display); font-weight: 600; font-size: 17px; margin: 0 0 6px; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .check-group h3 span { font-family: var(--mono); font-size: 12px; color: var(--ink-3); letter-spacing: .1em; }
+  .cq { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+  .cq p { margin: 0; font-size: 15px; min-width: 0; }
+  .cq .yn { display: flex; gap: 4px; }
+  .cq .yn button { appearance: none; font-family: var(--mono); font-size: 12px; padding: 5px 8px; border-radius: 3px; border: 1px solid var(--line); background: transparent; color: var(--ink-3); cursor: pointer; }
+  .cq .yn button[aria-pressed="true"].y { background: var(--sage); border-color: var(--sage); color: #14200f; }
+  .cq .yn button[aria-pressed="true"].n { background: var(--clay); border-color: var(--clay); color: #fff; }
+  .pattern { font-family: var(--mono); font-size: 13.5px; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 10px 12px; margin: 0 0 14px; }
+  .pattern .dots { letter-spacing: 3px; }
+
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--line); }
+  .toggles { display: flex; gap: 14px; font-family: var(--mono); font-size: 13.5px; color: var(--ink-2); }
+  .toggles label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .toggles input { accent-color: var(--copper); margin: 0; }
+  .nav { display: flex; gap: 6px; }
+  .navbtn { appearance: none; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font-family: var(--mono); font-size: 13.5px; padding: 8px 12px; border-radius: 3px; cursor: pointer; }
+  .navbtn:hover { border-color: var(--ink-3); }
+  .navbtn.primary { background: var(--copper); border-color: var(--copper); color: #1b120a; font-weight: 500; }
+  .navbtn:disabled { opacity: .4; cursor: default; }
+
+  @media (max-width: 900px) {
+    body { overflow: auto; }
+    .app { grid-template-columns: 1fr; grid-template-rows: 56vh auto; height: auto; }
+    .stage-wrap { height: 56vh; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+    .content { overflow: visible; padding-inline: 16px; }
+    .steps { padding-inline: 16px; }
+    .foot { padding-inline: 16px; flex-wrap: wrap; }
+    .brand h1 { font-size: 23px; }
+    .brand p { font-size: 11px; }
+    .hint { display: none; }
+    .strata { left: 16px; bottom: 10px; font-size: 11px; }
+    .lbl { font-size: 12.5px; padding: 2px 7px; }
+    .act { font-size: 14.5px; padding: 11px 14px; }
+  }
+</style>
+
+<div class="app">
+  <div class="stage-wrap">
+    <canvas id="scene" aria-label="A cross-section of ground: communities stand on the surface, and the channels between their people run beneath it like roots"></canvas>
+    <div class="labels" id="labels"></div>
+    <div class="brand">
+      <h1>Channels <span>Between</span> Nodes</h1>
+      <p>Channels into Knowledge · Revolutionary Intercommunal Mutualism</p>
+    </div>
+    <div class="strata" aria-hidden="true">
+      <span><i style="background:#f2c94c"></i>knowledge held at the Hub</span>
+      <span><i style="background:#d9a05b"></i>channels · the relational layer</span>
+      <span><i style="background:#9cbf8f"></i>work and support given</span>
+      <span><i style="background:#d26d47"></i>load and extraction</span>
+      <span><i style="background:#8db3d6"></i>pacts between organizations</span>
+    </div>
+    <div class="stacklist" id="stacklist" hidden><h4>Community Infrastructure Stack</h4><ul id="stackitems"></ul><p>Built in any order</p></div>
+    <div class="hint" aria-hidden="true">drag to orbit · scroll to zoom · ← → to step</div>
+  </div>
+
+  <aside>
+    <nav class="steps" id="steps" aria-label="Panels"></nav>
+    <div class="content" id="content" aria-live="polite"></div>
+    <div class="foot">
+      <div class="toggles">
+        <label><input type="checkbox" id="optLabels" checked> labels</label>
+        <label><input type="checkbox" id="optRotate" checked> rotate</label>
+      </div>
+      <div class="nav">
+        <button class="navbtn" id="prev" type="button">← Back</button>
+        <button class="navbtn primary" id="next" type="button">Next →</button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const C = { gold: 0xf2c94c, copper: 0xd9a05b, sage: 0x9cbf8f, clay: 0xd26d47, sky: 0x8db3d6, ground: 0x0f1316, soil: 0x2b2118 };
+  const POSTS = {
+    meeting: ['My Quaker meeting and channels, August 26, 2026', 'https://channelsintoknowledge.com/2026/08/26/my-quaker-meeting-and-channels/'],
+    embrace: ['Why we must embrace Indigenous leadership, April 11, 2026', 'https://activeobjection.substack.com/p/why-we-must-embrace-indigenous-leadership'],
+    communities: ['Working with different communities, May 2, 2026', 'https://activeobjection.substack.com/p/working-with-different-communities'],
+    channel: ['What is a channel?, August 24, 2026', 'https://channelsintoknowledge.com/2026/08/24/what-is-a-channel/'],
+    wonder: ['A sense of wonder, June 11, 2026', 'https://activeobjection.substack.com/p/a-sense-of-wonder'],
+    goodway: ['In a good way, May 8, 2026', 'https://activeobjection.substack.com/p/in-a-good-way'],
+    withheld: ['Knowledge withheld versus missing, July 14, 2026', 'https://activeobjection.substack.com/p/knowledge-withheld-versus-missing']
+  };
+  const STACK = [
+    { name: 'Food sovereignty', color: 0x9bb86a },
+    { name: 'Community health', color: 0xe08a6a },
+    { name: 'Climate resilience', color: 0x6aa9c9 },
+    { name: 'Decolonized technology', color: 0xa794d6 },
+    { name: 'Accountable safety', color: 0xd9b89c }
+  ];
+
+  // ---------- panel content ----------
+  const CROSS = [
+    ['What did not reach us', 'The terminal community', 'A place where what sustains life arrives only on someone else’s terms, if at all.'],
+    ['The channel', 'The link between nodes', 'A horizontal connection across a boundary that empire maintains.'],
+    ['A one-way channel is extraction', 'Mutual aid, not charity', 'The direction of flow is the test of whether a relationship frees or extracts.'],
+    ['Failure moved from persons to infrastructure', 'Systems named, not individuals', 'A structural diagnosis lets repair begin without waiting for anyone to confess.'],
+    ['You build channels', 'Replacement by construction', 'The response is to build, not to argue.'],
+    ['Duration, not events', 'Capacity built in layers, over time', 'Neither relationships nor autonomy can be rushed.'],
+    ['Channels must exist before the emergency', 'Anticipatory resilience', 'What a community can draw on in a crisis is only what it built beforehand.'],
+    ['Invitation precedes entry', 'Accountable allyship: the engine room, not the bridge', 'Outsiders follow the leadership of the people most affected.'],
+    ['A shared task', 'Survival programs', 'The work, not the image, builds the relationship and the power.'],
+    ['The knowledge comes as a person', 'Narrative sovereignty', 'Communities name their own world, and testimony stays in its holder’s voice.'],
+    ['A channel changes the person it reaches', 'Prefigurative politics', 'The method is itself the evidence of the aim.'],
+    ['The Hub: a place, and people who show up', 'The node', 'Organized capacity rooted in a particular place.']
+  ];
+  const TENSIONS = [
+    ['The individual and the community', 'A channel is a relationship between named people, and it cannot be inherited or held on a meeting’s behalf. RIM’s unit is the community, and its assemblies, rotation and recall exist to keep power from settling in individuals.', 'These are layers of one structure. Channels are the capillaries of a federation: personal, non-transferable, and collectively necessary. A community cannot hold a channel, but it can hold the conditions under which its members build their own.'],
+    ['Naming the machine', 'The Channels work routes around blame on purpose. RIM also aims at systems, but it insists on naming them in full every time: race, class, ability, colonization and gender.', 'The Channels work is strongest on colonization and seldom names the other axes. RIM invites it to say plainly what the water image leaves implicit: the ground was graded so the water would run elsewhere. That can be said without accusing anyone.'],
+    ['Peace testimony and self-defense', 'The Black Panther Party’s history includes armed community self-defense. The Quaker peace testimony does not permit it for Friends.', 'Narrower than it looks. The UPP’s safety pillar today means non-police crisis response, survivor-centered processes, de-escalation and conflict transformation, where Friends have long practice to offer if asked. A Friend can join the survival work without adopting armed self-defense, and should say so plainly.'],
+    ['Who is speaking, and to whom', 'RIM is written by a Black-led formation for its own cadre and support chapters. The Channels work is written by a white Quaker settler for other non-Native people.', 'A settler framework that absorbs a Black-led one and renames its parts would be doing exactly what both frameworks condemn. So the adaptation runs one way: it reorganizes the Channels work to fit RIM, and anything offered back travels only when invited.'],
+    ['Pace and measurement', 'RIM offers twelve-month programs and quarterly milestones. The Channels work says duration is the mechanism, and that its one reliable test looks backward.', 'RIM’s metrics measure capacity, not speed. A twelve-month program can serve the Channels work if it measures conditions and return paths, never “channels completed.”']
+  ];
+  const RUNGS = [
+    { name: 'The open door', record: 'The Decolonial Repair Network’s monthly call, open teach-ins, published lessons. You can show up knowing nothing yet.', do: 'Attend, and do nothing else until you are invited.' },
+    { name: 'A standing invitation to a form of work', record: 'The Hub’s work-weeks: remodeling buildings, cutting trees to fence the urban farm.', do: 'Do the work that was posted, not the work you think should have been posted.' },
+    { name: 'A specific invitation, by name', record: 'A named person asks you for a defined task, such as photographs or a website.', do: 'Deliver exactly what was asked, and check again later whether it is still wanted.' },
+    { name: 'Named as part of the work', record: 'The people whose work it is recognize you as a reliable member of their support network.', do: 'Treat it as a larger obligation, not rank. It does not make you an insider.' }
+  ];
+  const SQ = [
+    ['Reach', 'Serves the visitors’ curiosity. It adds nothing to what the Hub can do for the people it serves.', 'Adds labor to work the Hub has named as needed, such as remodeling buildings or fencing the urban farm.'],
+    ['Terms', 'Runs on the visitors’ schedule. “Unannounced arrivals interrupt the work.”', 'Runs on the Hub’s schedule and terms. The skill and the relationship stay with the Hub.'],
+    ['Expendability', 'Treats staff time as available by default. “GPAS has very few staff,” so the cost lands on the people with the least slack.', 'Moves the cost to the volunteers, who give time, travel and physical effort.'],
+    ['Recognition', 'Frames the Hub as something to tour rather than a sacred space with its own protocols.', 'Recognizes the Hub’s leadership by following it. “A fundamental part of decolonial work is following Indigenous leadership.”'],
+    ['Negation', 'Builds a clientele of well-wishers who need hosting.', 'Builds the capacity that makes future hosting less necessary, and prepares visitors to arrive well.']
+  ];
+  const BLIND = [
+    ['Who assesses a channel?', 'No knowledge-holder has ever assessed a channel. Each one is certified by the person who built it.', 'Audit checkpoints, and leadership from targeted communities that carries real authority.', 'Native people judge whether the response was useful, on their own schedule and only if they are willing.'],
+    ['Never turned away', 'No approach in the record was ever refused, so no observation could disprove the anatomy.', 'The audit question of whether people racialized as white become more reliable or more defensive when corrected.', 'Record the corrections you receive and what changed afterward. A channel that has never been corrected has probably not been tested.'],
+    ['Consent to publish', 'There is no consent rule for publishing what a channel carries.', 'Narrative sovereignty, and safety floors against exposing people.', 'Ask before a private exchange becomes a published example. Record the answer. Leave it out by default.'],
+    ['What the host carries', 'Nobody knows how many learners one small organization can carry.', 'The audit question of which tasks have been fully removed from frontline organizers’ plates.', 'Count the load each participant adds and the load they remove. Send newcomers to open doors that do not draw on staff.'],
+    ['How a channel ends', 'Channels cannot be inherited, and nothing describes how one ends.', 'Rotation, intergenerational stewardship, and sunset clauses.', 'Pair each channel-holder with a newer participant doing their own work. Plan departures openly. Keep obligations after moving away.'],
+    ['Invitations that age', 'An invitation can age into a standing license. Cornplanter’s limited request in 1791 for literacy became, within two generations, a program pursued as a replacement for Seneca life.', 'Delegated mandates that must return for ratification, recall, and sunset clauses tied to community milestones.', 'For every standing arrangement, ask who, alive, asked for it and when they last said so. Renew or end it on a schedule.'],
+    ['A return path that is only watched', 'Feedback from the knowledge-holders can be read as telemetry instead of direction.', 'Base assemblies that keep the mandate with the people affected.', 'Treat that feedback as instruction. A return path that is logged but not obeyed is monitoring, not reciprocity.'],
+    ['Axes left unnamed', 'The axes the Channels work names are mostly colonization and race.', 'Naming race, class, ability, colonization and gender, in full.', 'Ask who cannot take part in physical work-weeks, and build other real routes in: transport, writing, childcare, funds under community control.']
+  ];
+  const CHECK = [
+    ['Where am I on the ladder?', ['Is there an open door near me that I have walked through recently?', 'Have I answered a standing invitation to a form of work?', 'When someone asked me by name, did I do exactly that, and ask later whether it was still wanted?', 'Am I free of waiting for a personal invitation while an open door stands in front of me?']],
+    ['Which way does the flow run?', ['Did the people I learned from ask for what has flowed back from me?', 'Have I taken more off frontline organizers’ plates than I have added?', 'The last time I was corrected, did I become more reliable rather than more defensive?', 'Have I asked first before publishing anything someone told me privately?']],
+    ['What kind of not-knowing is this?', ['Can I tell whether what I don’t know is missing, withheld, or abandoned?', 'Have I opened a record my own community holds, one that needs nobody’s invitation?']],
+    ['Has anything arrived?', ['Do I understand something now that I could not have understood by reading?', 'Has how I spend my time, money and attention changed?', 'If the node I support called tomorrow, could more than one of us hear the request and act on it correctly?']]
+  ];
+
+  const STAGES = [
+    { tag: 'Crosswalk', title: 'Two maps of one shape', ctrl: 'cross',
+      body: ['<b>Channels into Knowledge</b> began with an absence: why the history of Quaker schools for Native children never reached a Friend formed by those schools. <b>Revolutionary Intercommunal Mutualism</b> (RIM), the framework of the United Panther Party’s Ministry of Political Education, carries Huey P. Newton’s analysis of empire into communities building their own infrastructure.',
+             'They were built by different people, for different readers. Both refuse to make guilt the engine, both treat the boundary as manufactured, and both answer with construction.'],
+      watch: 'Above the ground, the communities. Below it, the channels that hold them together.' },
+    { tag: 'Adaptation', title: 'The layer beneath the stack', ctrl: 'layer',
+      body: ['RIM’s <b>Community Infrastructure Stack</b> names five kinds of capacity: food, health, climate resilience, technology and safety. They are built in layers, in pieces, over time, and not necessarily in any particular order.',
+             'What the stack takes for granted is relationship. The paper proposes channels as the <b>relational layer</b> the five pillars stand on, not a sixth pillar on top. Read RIM’s Five Honest Questions again and every one of them is a question about <b>who</b>.'],
+      watch: 'Pull the roots out and watch what the pillars are standing on.',
+      quote: ['And those hours of shared, difficult manual labor built bonds among us quickly. Channels being built.', POSTS.meeting] },
+    { tag: 'Federation', title: 'Before a pact, the channels', ctrl: 'pact',
+      body: ['Strong single communities are not enough. RIM federates nodes through mutual aid pacts with triggers and response windows, shared standards, skill commons and rapid defense agreements. Nobody dissolves into anybody.',
+             'An agreement is only as strong as the relationships between the people who have to honor it. A pact between organizations with no channels between their members is what the Channels work calls <b>proximity</b>: two parties in the same place, with nothing moving between them.'],
+      watch: 'Send the same urgent call twice: once along the pact alone, once with channels beneath it.' },
+    { tag: 'Engine room', title: 'The ladder of invitation', ctrl: 'ladder',
+      body: ['RIM puts the place of people from outside the most affected communities in one image: the work happens in the engine room, not on the bridge. The ladder of invitation is how a person actually gets there.',
+             'What a newcomer controls is the same at every rung: whether to present themselves at the next one. The most common failure is waiting at the wrong rung. It looks like humility and cannot be told apart from absence.'],
+      watch: 'Knowledge leaves the Hub only through its gate, and only after the gate has opened.',
+      quote: ['I also meant by JUST attend to mean don’t do anything else until you are invited to do so. Which will likely not happen at your first engagement.', POSTS.communities] },
+    { tag: 'Survival Questions', title: 'Which way does it point?', ctrl: 'survival',
+      body: ['The UPP offers five Survival Questions as a filter on any offer: <b>Reach, Terms, Expendability, Recognition and Negation</b>. You are not looking for a perfect score. You are reading direction and weight.',
+             'The paper runs them on a real situation: Friends in a small meeting who want to see the Hub for themselves.'],
+      quote: ['Some of them want to see for themselves what I’ve been describing. That is how Friends have traditionally engaged with justice work — by visiting the organizations doing it. It is the only model most of us were ever given.', POSTS.meeting],
+      quote2: ['Expecting to be welcomed to visit, unannounced, is a colonial practice. I don’t say that to accuse anyone in my meeting.', POSTS.meeting],
+      watch: 'Switch between the two and watch where the cost lands.' },
+    { tag: 'Intersectional Mutualism', title: 'An immune system for channels', ctrl: 'immune',
+      body: ['The UPP calls Intersectional Mutualism the built-in immune system of its framework: structure that keeps a network from reproducing the hierarchies it was built to end. Small groups rarely do, because everyone is in direct relationship. The danger appears when networks federate.',
+             'The Channels anatomy was built on one person’s relationships. If the method spreads, it will meet those scaling failures. The Channels archive keeps a candid list of its own blind spots, and RIM has already built a mechanism for several of them.',
+             'Watch where the gold goes. Knowledge held at the Hub reaches the small meeting only along the channel its members built: entered by invitation, through the gate, over years of presence and shared work under the Hub’s direction. That channel is what makes understanding possible. Without it, the knowledge stays where it is, carried at great cost by the people who hold it.',
+             'Nodes C and D are linked to each other and to the meeting, and support moves freely among all three. But <b>neither has built a channel into the Hub</b>, so none of the Hub’s knowledge reaches them. The meeting cannot pass it along second-hand: a channel cannot be inherited, and the knowledge comes as a person. If C or D wants to learn from the Hub, they begin where everyone begins, at the open door, and build their own channel over time.'],
+      watch: 'Gold reaches only the meeting, through the gate. C and D are linked to the meeting, yet no gold reaches them. Choose a blind spot below to light its checkpoint.' },
+    { tag: 'Putting it to work', title: 'A support node of three', ctrl: 'node',
+      body: ['A small Quaker meeting is not an oppressed community, and calling it one would misuse RIM’s language. But a meeting that can act on what it knows, within its own jurisdiction, has begun to work as a node. It can open its own records, prepare its visitors, and hold study circles, all without placing any load on the Hub.',
+             'The UPP says a support node starts with three people. What makes it a node is not its size: its members hold their own channels. The meeting cannot hold a channel on its members’ behalf.'],
+      watch: 'Every channel reaches the Hub through the same gate. Count how many would survive one person stepping back.',
+      quote: ['My meeting has a very small number of active members. One of them, Jon, has come to a couple of the work-weeks with me, which is great. He has begun creating his own relationships — his own channels — with people at the Hub.', POSTS.meeting],
+      quote2: ['The future will need places like… this Hub, and people like… us, to do it.', POSTS.wonder, 'During a break in the work in April, 2026, at the Urban Resilience Hub in Iowa City, we all paused when one of the young people, Joe Maxwell, spoke these words slowly and with a wondering tone: '] },
+    { tag: 'Self-check', title: 'Has anything arrived?', ctrl: 'check',
+      body: ['These questions combine the Channels test, the ladder of invitation, and the UPP’s Survival Questions. Work through them alone, in a support node of three, or in a study circle. There are no scores. Read the pattern.'],
+      watch: 'Every node and every channel at once. Nothing on this screen is a channel; it can only point you toward one.',
+      quote: ['It isn’t possible to share what can only be experienced.', POSTS.goodway] }
+  ];
+
+  // ---------- DOM ----------
+  const canvas = document.getElementById('scene');
+  const wrap = canvas.parentElement;
+  const labelsEl = document.getElementById('labels');
+  const stepsEl = document.getElementById('steps');
+  const contentEl = document.getElementById('content');
+  const optLabels = document.getElementById('optLabels');
+  const optRotate = document.getElementById('optRotate');
+  STAGES.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.className = 'step'; b.type = 'button'; b.textContent = String(i + 1);
+    b.title = s.title; b.setAttribute('aria-label', 'Panel ' + (i + 1) + ': ' + s.title);
+    b.addEventListener('click', () => go(i));
+    stepsEl.appendChild(b);
+  });
+
+  if (!window.THREE) { contentEl.innerHTML = '<p>The 3D library did not load. Check your connection and reload the page.</p>'; return; }
+
+  // ---------- three setup ----------
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setClearColor(C.ground, 1);
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(C.ground, 36, 72);
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
+  camera.position.set(0, 14, 26);
+  const controls = THREE.OrbitControls ? new THREE.OrbitControls(camera, canvas) : null;
+  if (controls) { controls.enableDamping = true; controls.dampingFactor = 0.08; controls.minDistance = 7; controls.maxDistance = 50; controls.autoRotateSpeed = 0.5; controls.maxPolarAngle = Math.PI * 0.62; }
+  scene.add(new THREE.HemisphereLight(0xbcd0e0, 0x2b2118, 0.8));
+  const sun = new THREE.DirectionalLight(0xfff0d8, 0.75); sun.position.set(-8, 20, 14); scene.add(sun);
+
+  function dotTex() {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'); const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.35, 'rgba(255,255,255,.75)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = r; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
+  }
+  const DOT = dotTex();
+
+  // translucent ground slab: the surface you stand on, with the soil visible beneath
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2b, roughness: 1, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide });
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(26, 72), groundMat);
+  ground.rotation.x = -Math.PI / 2; scene.add(ground);
+  const rim = new THREE.Mesh(new THREE.RingGeometry(25.8, 26, 96), new THREE.MeshBasicMaterial({ color: 0x6b5440, side: THREE.DoubleSide }));
+  rim.rotation.x = -Math.PI / 2; rim.position.y = 0.01; scene.add(rim);
+  // faint soil strata below
+  [-1.2, -2.4].forEach((y, i) => {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(25, 64), new THREE.MeshBasicMaterial({ color: 0x2b2118, transparent: true, opacity: 0.18 - i * 0.06, depthWrite: false, side: THREE.DoubleSide }));
+    m.rotation.x = -Math.PI / 2; m.position.y = y; scene.add(m);
+  });
+
+  // seeded random so the roots look the same every visit
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+
+  // ---------- flows ----------
+  function Flow(curve, color, count, speed, size) {
+    this.curve = curve; this.count = count; this.speed = speed; this.limit = 1; this.target = 0; this.op = 0; this.phase = rnd();
+    const geo = new THREE.BufferGeometry(); this.arr = new Float32Array(count * 3);
+    geo.setAttribute('position', new THREE.BufferAttribute(this.arr, 3));
+    this.mat = new THREE.PointsMaterial({ color, size, map: DOT, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+    this.points = new THREE.Points(geo, this.mat); this.points.frustumCulled = false; scene.add(this.points);
+    this.tmp = new THREE.Vector3();
+  }
+  Flow.prototype.update = function (time, dt) {
+    this.op += (this.target - this.op) * Math.min(1, dt * 3);
+    this.mat.opacity = this.op; this.points.visible = this.op > 0.01;
+    if (!this.points.visible) return;
+    const lim = Math.max(0.0001, this.limit);
+    for (let i = 0; i < this.count; i++) {
+      const t = ((time * this.speed + this.phase + i / this.count) % 1) * lim;
+      this.curve.getPoint(t, this.tmp);
+      this.arr[i * 3] = this.tmp.x; this.arr[i * 3 + 1] = this.tmp.y; this.arr[i * 3 + 2] = this.tmp.z;
+    }
+    this.points.geometry.attributes.position.needsUpdate = true;
+  };
+
+  // ---------- figures ----------
+  const bodyGeo = new THREE.CylinderGeometry(0.12, 0.17, 0.62, 10); bodyGeo.translate(0, 0.31, 0);
+  const headGeo = new THREE.SphereGeometry(0.13, 14, 10); headGeo.translate(0, 0.78, 0);
+  function makeFigure(mat) { const g = new THREE.Group(); g.add(new THREE.Mesh(bodyGeo, mat), new THREE.Mesh(headGeo, mat)); return g; }
+
+  // ---------- nodes ----------
+  const NODES = [
+    { key: 'H', name: 'The Hub · an Indigenous-led node', pos: [-7, 0, 1], pillars: [1, 1, 1, 1, 1], house: false },
+    { key: 'M', name: 'A small Quaker meeting', pos: [7, 0, 1], pillars: null, house: true },
+    { key: 'C', name: 'Node C · a neighborhood food program', pos: [-6.5, 0, -10], pillars: [1, 0.7, 0, 0.4, 0], house: false },
+    { key: 'D', name: 'Node D · a tenant union', pos: [6.5, 0, -10], pillars: [0.3, 0, 0.8, 0, 0.6], house: false }
+  ];
+  const N = {};
+  NODES.forEach((n, idx) => {
+    const g = new THREE.Group(); g.position.set(n.pos[0], 0, n.pos[2]); scene.add(g);
+    const baseMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2c, emissive: 0xd9a05b, emissiveIntensity: 0.05, roughness: 0.9 });
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.2, 0.22, 44), baseMat); base.position.y = 0.11; g.add(base);
+    const figMat = new THREE.MeshStandardMaterial({ color: n.key === 'H' ? 0xf0dcc0 : 0xd8d0c4, roughness: 0.8, emissive: 0x000000 });
+    const figs = [];
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.4 + idx;
+      const f = makeFigure(figMat); f.position.set(Math.cos(a) * 1.65, 0.22, Math.sin(a) * 1.65); g.add(f); figs.push(f);
+    }
+    // the five pillars of the stack, standing around the centre
+    const pillars = [];
+    if (n.pillars) STACK.forEach((s, k) => {
+      const h = 1.0 + ((k * 37 + idx * 11) % 7) * 0.13;
+      const mat = new THREE.MeshStandardMaterial({ color: s.color, emissive: s.color, emissiveIntensity: 0.22, roughness: 0.6, transparent: true, opacity: 0.96 });
+      const geo = new THREE.CylinderGeometry(0.22, 0.26, h, 16); geo.translate(0, h / 2, 0);
+      const m = new THREE.Mesh(geo, mat); const a = k / 5 * Math.PI * 2 + idx * 0.7;
+      m.position.set(Math.cos(a) * 0.85, 0.22, Math.sin(a) * 0.85); m.scale.y = 0.001; g.add(m);
+      pillars.push({ mesh: m, mat, h, built: n.pillars[k], cur: 0, a, tilt: (rnd() - 0.5) * 0.9, tiltB: (rnd() - 0.5) * 0.9 });
+    });
+    if (n.house) {
+      const hm = new THREE.MeshStandardMaterial({ color: 0x9a8a78, roughness: 0.9 });
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.9, 1.1), hm); box.position.y = 0.67; g.add(box);
+      const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 1.0, 0.6, 4, 1), new THREE.MeshStandardMaterial({ color: 0x6d5b4b, roughness: 0.9 }));
+      roof.rotation.y = Math.PI / 4; roof.scale.set(1.15, 1, 0.85); roof.position.y = 1.42; g.add(roof);
+    }
+    // roots: the node's own relational layer
+    const rootMats = [];
+    const crown = new THREE.Vector3(n.pos[0], -0.55, n.pos[2]);
+    for (let r = 0; r < 8; r++) {
+      const a = r / 8 * Math.PI * 2 + rnd() * 0.5;
+      const len = 2.2 + rnd() * 1.4, depth = 1.4 + rnd() * 1.3;
+      const p0 = new THREE.Vector3(n.pos[0] + Math.cos(a) * 0.3, -0.15, n.pos[2] + Math.sin(a) * 0.3);
+      const p1 = new THREE.Vector3(n.pos[0] + Math.cos(a) * len * 0.45, -depth * 0.55, n.pos[2] + Math.sin(a) * len * 0.45);
+      const p2 = new THREE.Vector3(n.pos[0] + Math.cos(a + 0.25) * len, -depth, n.pos[2] + Math.sin(a + 0.25) * len);
+      const curve = new THREE.CatmullRomCurve3([p0, p1, p2]);
+      const mat = new THREE.MeshStandardMaterial({ color: 0xb07a3c, emissive: C.copper, emissiveIntensity: 0.2, transparent: true, opacity: 0.75, roughness: 0.6, depthWrite: false });
+      scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.055, 6, false), mat)); rootMats.push(mat);
+      const b0 = curve.getPoint(0.55), ba = a + (rnd() > 0.5 ? 0.9 : -0.9);
+      const b1 = b0.clone().add(new THREE.Vector3(Math.cos(ba) * 1.1, -0.5 - rnd() * 0.5, Math.sin(ba) * 1.1));
+      scene.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([b0, b0.clone().lerp(b1, 0.5).add(new THREE.Vector3(0, 0.15, 0)), b1]), 10, 0.03, 5, false), mat));
+    }
+    N[n.key] = { ...n, group: g, baseMat, figMat, figs, pillars, rootMats, crown, root: 1, lit: 0.3 };
+  });
+  const H = N.H, M = N.M;
+
+  // knowledge held at the Hub: a gold light at the root crown, in the ground
+  const seedMesh = new THREE.Mesh(new THREE.SphereGeometry(0.34, 22, 16), new THREE.MeshBasicMaterial({ color: C.gold }));
+  seedMesh.position.copy(H.crown); scene.add(seedMesh);
+  const seedHalo = new THREE.Sprite(new THREE.SpriteMaterial({ map: DOT, color: C.gold, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
+  seedHalo.scale.set(2.4, 2.4, 1); seedHalo.position.copy(H.crown); scene.add(seedHalo);
+
+  // ---------- the gate and the channels from the meeting to the Hub ----------
+  const GATE = new THREE.Vector3(-4.2, -1.25, 2.2);
+  function tubeChannel(curve, radius, color) {
+    const geo = new THREE.TubeGeometry(curve, 110, radius, 10, false);
+    const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, transparent: true, opacity: 0.5, roughness: 0.4, depthWrite: false });
+    const mesh = new THREE.Mesh(geo, mat); geo.setDrawRange(0, 0); scene.add(mesh);
+    return { curve, geo, mat, mesh, total: geo.index.count, prog: 0 };
+  }
+  const MH = [];
+  for (let i = 0; i < 5; i++) {
+    const zOff = (i - 2) * 0.75, dip = 1.7 + (i % 3) * 0.35;
+    const start = new THREE.Vector3(7 + (i - 2) * 0.35, -0.5, 1 + 1.1 + zOff * 0.4);
+    const pts = [start,
+      new THREE.Vector3(3.6, -dip, 2.4 + zOff), new THREE.Vector3(-0.4, -dip - 0.25, 2.8 + zOff * 0.8),
+      new THREE.Vector3(-3.1, -1.4, 2.35 + zOff * 0.2), GATE.clone(), new THREE.Vector3(-5.6, -0.9, 1.6), H.crown.clone()];
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const ch = tubeChannel(curve, i === 0 ? 0.16 : 0.12, C.copper);
+    ch.rev = new THREE.CatmullRomCurve3(pts.slice().reverse());
+    ch.work = new Flow(curve, C.sage, 12, 0.11, 0.38);
+    ch.gold = new Flow(ch.rev, C.gold, 12, 0.11, 0.42);
+    MH.push(ch);
+  }
+  const glowGeo = new THREE.TubeGeometry(MH[0].curve, 110, 0.42, 14, false);
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xffc860, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+  const glowTube = new THREE.Mesh(glowGeo, glowMat); glowTube.visible = false; scene.add(glowTube);
+  const glowTotal = glowGeo.index.count;
+  const gateMat = new THREE.MeshBasicMaterial({ color: C.gold, transparent: true, opacity: 0.12 });
+  const gate = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.07, 10, 44), gateMat);
+  gate.position.copy(GATE); gate.lookAt(GATE.clone().add(MH[0].curve.getTangent(0.66))); scene.add(gate);
+
+  // checkpoints for the immune-system panel
+  const CHECKS = BLIND.map((b, i) => {
+    const t = 0.06 + i * 0.075; const p = MH[0].curve.getPoint(t);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xf4ead8, transparent: true, opacity: 0, depthWrite: false });
+    const m = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.04, 8, 28), mat);
+    m.position.copy(p); m.lookAt(p.clone().add(MH[0].curve.getTangent(t))); scene.add(m);
+    return { m, mat };
+  });
+
+  // ---------- surface: visits, ladder, pact ----------
+  const visitCurves = [0, 1, 2].map(i => new THREE.QuadraticBezierCurve3(new THREE.Vector3(5.4, 0.6, 2.2 + i * 0.3), new THREE.Vector3(0, 0.6 + i * 0.3, 11.5 + i * 0.9), new THREE.Vector3(-5.2, 0.6, 2.4 + i * 0.3))); // low, in front of the scene
+  const visits = visitCurves.map(c => new Flow(c, C.clay, 10, 0.16, 0.42));
+  const loadRing = new THREE.Mesh(new THREE.TorusGeometry(2.45, 0.08, 8, 60), new THREE.MeshBasicMaterial({ color: C.clay, transparent: true, opacity: 0, depthWrite: false }));
+  loadRing.rotation.x = Math.PI / 2; loadRing.position.set(H.pos[0], 0.3, H.pos[2]); scene.add(loadRing);
+
+  const STONE_X = [4.4, 1.7, -1.0, -3.7];
+  const stones = STONE_X.map((x, i) => {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x5a4a3a, emissive: C.sage, emissiveIntensity: 0, roughness: 0.9, transparent: true, opacity: 0 });
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.52, 0.14 + i * 0.1, 24), mat);
+    m.position.set(x, 0.09 + i * 0.06, 4.6); scene.add(m); return { m, mat };
+  });
+  const walkerMat = new THREE.MeshStandardMaterial({ color: 0xf4e3c8, emissive: C.copper, emissiveIntensity: 0.25, roughness: 0.7, transparent: true, opacity: 0 });
+  const walker = makeFigure(walkerMat); walker.scale.setScalar(1.15); scene.add(walker);
+  const WALK_HOME = new THREE.Vector3(6.6, 0.22, 4.4);
+
+  const CD = N.C, DD = N.D;
+  const pactCurve = new THREE.CatmullRomCurve3([new THREE.Vector3(-4.3, 0.35, -10), new THREE.Vector3(0, 0.55, -10.3), new THREE.Vector3(4.3, 0.35, -10)]);
+  const pactMat = new THREE.MeshBasicMaterial({ color: C.sky, transparent: true, opacity: 0, depthWrite: false });
+  scene.add(new THREE.Mesh(new THREE.TubeGeometry(pactCurve, 40, 0.06, 6, false), pactMat));
+  const CDch = [0, 1, 2].map(i => {
+    const z = -10 + (i - 1) * 1.1, dip = 1.5 + i * 0.35;
+    const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(-6.0, -0.5, z * 0.98), new THREE.Vector3(-2.5, -dip, z + 0.6), new THREE.Vector3(2.5, -dip, z - 0.4), new THREE.Vector3(6.0, -0.5, z * 0.98)]);
+    const ch = tubeChannel(curve, 0.11, C.copper);
+    ch.rev = new THREE.CatmullRomCurve3(curve.points.slice().reverse());
+    return ch;
+  });
+  // channels from nodes C and D to the meeting; neither node has a channel to the Hub
+  function netChannel(pts) {
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const ch = tubeChannel(curve, 0.11, C.copper);
+    ch.fwd = new Flow(curve, C.sage, 10, 0.1, 0.34);
+    ch.back = new Flow(new THREE.CatmullRomCurve3(pts.slice().reverse()), C.sage, 10, 0.1, 0.34);
+    return ch;
+  }
+  const NET = [
+    netChannel([new THREE.Vector3(-5.6, -0.5, -9.2), new THREE.Vector3(-1.5, -1.9, -7.2), new THREE.Vector3(3.6, -1.9, -3.6), new THREE.Vector3(6.6, -0.5, 0.0)]),
+    netChannel([new THREE.Vector3(6.5, -0.5, -9.0), new THREE.Vector3(7.0, -1.7, -6.0), new THREE.Vector3(7.4, -1.7, -2.6), new THREE.Vector3(7.1, -0.5, -0.2)])
+  ];
+  CDch.forEach(ch => { ch.fwd = new Flow(ch.curve, C.sage, 10, 0.1, 0.34); ch.back = new Flow(ch.rev, C.sage, 10, 0.1, 0.34); });
+  function pulseSprite(color, s) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: DOT, color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })); sp.scale.set(s, s, 1); scene.add(sp); return sp; }
+  const pactPulse = pulseSprite(0xffffff, 1.3);
+  const chPulses = CDch.map(() => pulseSprite(0xffe6b8, 1.1));
+  const backPulses = CDch.map(() => pulseSprite(C.sage, 1.0));
+  const dFlash = new THREE.Mesh(new THREE.TorusGeometry(2.45, 0.09, 8, 60), new THREE.MeshBasicMaterial({ color: C.clay, transparent: true, opacity: 0, depthWrite: false }));
+  dFlash.rotation.x = Math.PI / 2; dFlash.position.set(DD.pos[0], 0.3, DD.pos[2]); scene.add(dFlash);
+
+  // ---------- labels ----------
+  const LABELS = {};
+  function addLabel(key, text, getPos, opts = {}) {
+    const el = document.createElement('div'); el.className = 'lbl';
+    el.innerHTML = (opts.dot ? '<span class="dot" style="background:' + opts.dot + '"></span>' : '') + text;
+    labelsEl.appendChild(el); LABELS[key] = { el, getPos, below: !!opts.below, stack: opts.stack || 0, group: opts.group || null };
+  }
+  NODES.forEach(n => addLabel('node' + n.key, n.name, () => new THREE.Vector3(n.pos[0], 0, n.pos[2] + 2.3), { below: true }));
+  addLabel('seed', 'Knowledge held at the Hub', () => H.crown.clone().add(new THREE.Vector3(-1.4, -2.2, 0.6)), { dot: '#f2c94c', below: true });
+  addLabel('roots', 'The relational layer', () => new THREE.Vector3(H.pos[0] - 2.4, -2.6, H.pos[2] - 0.5), { dot: '#d9a05b', below: true });
+  addLabel('gate', 'Gate: invitation precedes entry', () => GATE.clone().add(new THREE.Vector3(2.2, -0.9, 1.4)), { dot: '#f2c94c', below: true });
+  addLabel('pact', 'Pact', () => new THREE.Vector3(0, 0.9, -10.3), { dot: '#8db3d6' });
+  addLabel('noC', 'No channel to the Hub yet', () => new THREE.Vector3(N.C.pos[0], 0, N.C.pos[2] + 2.3), { dot: '#d26d47', below: true, stack: 1 });
+  addLabel('noD', 'No channel to the Hub yet', () => new THREE.Vector3(N.D.pos[0], 0, N.D.pos[2] + 2.3), { dot: '#d26d47', below: true, stack: 1 });
+  addLabel('load', 'Load on very few staff', () => new THREE.Vector3(H.pos[0], 2.4, H.pos[2] - 1.6), { dot: '#d26d47' });
+  addLabel('mhch', 'Channel', () => MH[0].curve.getPoint(0.45).add(new THREE.Vector3(0, -0.5, 0)), { dot: '#d9a05b', below: true });
+  RUNGS.forEach((r, i) => addLabel('rung' + i, (i + 1) + ' · ' + r.name, () => stones[i].m.position.clone().add(i % 2 ? new THREE.Vector3(0, 0, 0.8) : new THREE.Vector3(0, 0.55, -0.2)), { below: i % 2 === 1 }));
+  STACK.forEach((s, k) => addLabel('pil' + k, s.name, () => { const p = H.pillars[k]; return new THREE.Vector3(H.pos[0] + Math.cos(p.a) * 2.9, 0.6 + k * 0.42, H.pos[2] + Math.sin(p.a) * 2.9); }, { dot: '#' + s.color.toString(16).padStart(6, '0') }));
+
+  // the stack, shown as one fixed list on panel 2
+  const stackEl = document.getElementById('stacklist');
+  document.getElementById('stackitems').innerHTML = STACK.map(s => '<li><i style="background:#' + s.color.toString(16).padStart(6, '0') + '"></i>' + s.name + '</li>').join('');
+
+  // ---------- camera presets ----------
+  const CAMS = [
+    [[4, 8, 28], [0, -1, -3]],
+    [[-2, 3.4, 12], [-7, -0.6, 0.5]],
+    [[0, 5, 7], [0, -0.9, -10]],
+    [[2, 5, 18], [0, -0.8, 2.2]],
+    [[0, 7, 18], [0, -0.4, 1]],
+    [[1.5, 19, 9.5], [0, -1.2, -4.2]],
+    [[5, 3.5, 15], [0, -1, 1.6]],
+    [[-1, 34, 14], [0, -1, -4.5]]
+  ];
+  let camAnim = null;
+  function flyTo(i) {
+    const [p, t] = CAMS[i];
+    const from = { p: camera.position.clone(), t: controls ? controls.target.clone() : new THREE.Vector3() };
+    const to = { p: new THREE.Vector3(...p), t: new THREE.Vector3(...t) };
+    if (REDUCED) { camera.position.copy(to.p); if (controls) controls.target.copy(to.t); else camera.lookAt(to.t); camAnim = null; return; }
+    camAnim = { from, to, t: 0 };
+  }
+
+  // ---------- state ----------
+  let stage = 0, st = 0, started = false;
+  const S = { crossMode: 'shared', crossSel: 0, pulled: false, pactMode: 'pact', callT: -1, rung: 0, waiting: false, sqMode: 'visit', blindSel: -1, friends: 2, answers: {} };
+
+  function go(i) {
+    stage = Math.max(0, Math.min(STAGES.length - 1, i)); st = 0;
+    S.callT = -1; S.pulled = false; S.waiting = false;
+    S.answers = {}; // the self-check starts fresh whenever a panel is opened, including Back and Start over
+    flyTo(stage); renderPanel();
+    contentEl.scrollTop = 0;
+    if (window.matchMedia('(max-width: 900px)').matches && started) document.querySelector('aside').scrollIntoView({ block: 'start' });
+    started = true;
+  }
+
+  function quoteHTML(q) {
+    if (!q) return '';
+    const lead = q[2] || '';
+    return '<blockquote>' + lead + '“' + q[0] + '”<cite>Jeff Kisling, <a href="' + q[1][1] + '" target="_blank" rel="noopener">' + q[1][0] + '</a></cite></blockquote>';
+  }
+
+  function ctrlHTML(kind) {
+    if (kind === 'cross') {
+      const shared = S.crossMode === 'shared';
+      let h = '<div class="seg"><button class="act quiet" type="button" data-mode="shared" aria-pressed="' + shared + '">Shared ground</button><button class="act quiet" type="button" data-mode="tension" aria-pressed="' + !shared + '">Where they part</button></div>';
+      const list = shared ? CROSS : TENSIONS;
+      const sel = Math.min(S.crossSel, list.length - 1);
+      h += '<div class="chips">' + list.map((r, i) => '<button class="chip" type="button" data-sel="' + i + '" aria-pressed="' + (i === sel) + '">' + (shared ? r[0] : r[0]) + '</button>').join('') + '</div>';
+      if (shared) {
+        const r = list[sel];
+        h += '<div class="card"><div class="pair"><div><div class="k">Channels into Knowledge</div><div class="v c">' + r[0] + '</div></div><div><div class="k">RIM</div><div class="v r">' + r[1] + '</div></div></div><dl><dt>What they share</dt><dd>' + r[2] + '</dd></dl></div>';
+      } else {
+        const r = list[sel];
+        h += '<div class="card"><h3>' + r[0] + '</h3><dl><dt>The difference</dt><dd>' + r[1] + '</dd><dt>How the adaptation holds it</dt><dd>' + r[2] + '</dd></dl></div>';
+      }
+      h += '<p class="note">This is a study of what the Channels work can learn from RIM, not a proposal to change RIM. RIM belongs to the people who built it, out of the Black Radical Tradition and Indigenous lifeways. Read the UPP’s own work at <a href="https://unitedpantherparty.substack.com" target="_blank" rel="noopener">unitedpantherparty.substack.com</a>.</p>';
+      return h;
+    }
+    if (kind === 'layer') {
+      return '<div class="ctrl"><button class="act' + (S.pulled ? '' : ' warn') + '" type="button" id="pull">' + (S.pulled ? 'Restore the relational layer' : 'Pull out the relational layer') + '</button></div>' +
+        '<div class="readout" id="layerread"></div>' +
+        '<ul class="qs"><li>If the grid shut down, where would food come from, and <em>who</em> would you feed?</li><li><em>Who</em> would provide care, and who knows how?</li><li>Where would people gather in extreme heat or cold?</li><li>How would you reach your people, and <em>who</em> would you call?</li><li><em>Who</em> could respond to harm without calling police?</li></ul>';
+    }
+    if (kind === 'pact') {
+      const p = S.pactMode === 'pact';
+      return '<div class="seg"><button class="act quiet" type="button" data-pm="pact" aria-pressed="' + p + '">Pact only</button><button class="act quiet" type="button" data-pm="channels" aria-pressed="' + !p + '">Pact with channels beneath</button></div>' +
+        '<div class="ctrl"><button class="act" type="button" id="call">Send an urgent call from C</button></div><div class="readout" id="callread"></div>';
+    }
+    if (kind === 'ladder') {
+      const r = S.rung;
+      let h = '<div class="ctrl"><button class="act" type="button" id="step"' + (r >= 4 ? ' disabled' : '') + '>' + (r === 0 ? 'Present yourself at the open door' : 'Present yourself at the next rung') + '</button>' +
+        '<button class="act warn" type="button" id="wait"' + (r >= 4 ? ' disabled' : '') + '>Wait for a personal invitation</button>' +
+        '<button class="act quiet" type="button" id="restart">Start over</button></div><div class="readout" id="rungread"></div>';
+      if (r > 0) {
+        const R = RUNGS[r - 1];
+        h += '<div class="card"><h3>Rung ' + r + ' · ' + R.name + '</h3><dl><dt>In the record</dt><dd>' + R.record + '</dd><dt>What to do here</dt><dd>' + R.do + '</dd></dl></div>';
+        if (r === 2) h += quoteHTML(['These work camps are an invitation.', POSTS.embrace]);
+      }
+      return h;
+    }
+    if (kind === 'survival') {
+      const v = S.sqMode === 'visit';
+      let h = '<div class="ctrl"><button class="act' + (v ? ' warn' : '') + '" type="button" data-sq="visit" aria-pressed="' + v + '">An unannounced visit to see the Hub</button><button class="act" type="button" data-sq="work" aria-pressed="' + !v + '">Prepared participation at an invited work-week</button></div>';
+      h += '<div class="dial-key"><span>← toward extraction</span><span>toward the node →</span></div>';
+      h += SQ.map(q => '<div class="dial-row"><div class="nm">' + q[0] + '</div><p>' + (v ? q[1] : q[2]) + '</p><div class="dial"><i style="' + (v ? 'left:12%;width:38%;background:var(--clay)' : 'left:50%;width:38%;background:var(--sage)') + '"></i></div></div>').join('');
+      h += '<p class="src">Quoted phrases in these rows are from <a href="' + POSTS.meeting[1] + '" target="_blank" rel="noopener">' + POSTS.meeting[0] + '</a></p>';
+      return h;
+    }
+    if (kind === 'immune') {
+      let h = '<div class="chips">' + BLIND.map((b, i) => '<button class="chip" type="button" data-bs="' + i + '" aria-pressed="' + (i === S.blindSel) + '">' + b[0] + '</button>').join('') + '</div>';
+      if (S.blindSel >= 0) {
+        const b = BLIND[S.blindSel];
+        h += '<div class="card"><h3>' + b[0] + '</h3><dl><dt>Blind spot in the Channels work</dt><dd>' + b[1] + '</dd><dt>The mechanism RIM already has</dt><dd>' + b[2] + '</dd><dt>The adaptation</dt><dd>' + b[3] + '</dd></dl></div>';
+      } else h += '<div class="readout">Choose a blind spot above.</div>';
+      return h;
+    }
+    if (kind === 'node') {
+      return '<div class="card"><h3>A sixth honest question, for outside allies</h3><dl><dd>If the node you support called tomorrow for help it urgently needed, who among you already has a relationship with someone there strong enough to hear the request, understand it correctly, and act on it?</dd></dl></div>' +
+        '<div class="slider"><label for="friends">Friends who hold their own channel to the Hub: <b id="fcount">' + S.friends + '</b></label><input type="range" id="friends" min="0" max="5" step="1" value="' + S.friends + '"></div>' +
+        '<div class="ctrl"><button class="act warn" type="button" id="stepback"' + (S.friends === 0 ? ' disabled' : '') + '>One Friend steps back</button></div><div class="readout" id="noderead"></div>';
+    }
+    if (kind === 'check') {
+      let h = '';
+      CHECK.forEach((g, gi) => {
+        h += '<div class="check-group"><h3>' + g[0] + '</h3>';
+        g[1].forEach((q, qi) => {
+          const id = gi + '-' + qi, a = S.answers[id];
+          h += '<div class="cq"><p>' + q + '</p><div class="yn"><button type="button" class="y" data-q="' + id + '" data-a="y" aria-pressed="' + (a === 'y') + '">Yes</button><button type="button" class="n" data-q="' + id + '" data-a="n" aria-pressed="' + (a === 'n') + '">Not yet</button></div></div>';
+        });
+        h += '</div>';
+      });
+      return '<div class="pattern" id="pattern"></div>' + h + '<p class="note">Your answers are not saved. They clear when you leave this panel.</p>';
+    }
+    return '';
+  }
+
+  function patternHTML() {
+    let start = null; const rows = CHECK.map((g, gi) => {
+      const marks = g[1].map((q, qi) => S.answers[gi + '-' + qi]);
+      const dots = marks.map(a => a === 'y' ? '●' : a === 'n' ? '○' : '·').join('');
+      if (!start && marks.some(a => a === 'n')) start = g[0];
+      return '<div><span class="dots">' + dots + '</span> ' + g[0] + '</div>';
+    }).join('');
+    const answered = Object.keys(S.answers).length;
+    const lead = answered === 0 ? 'Answer as many as you like. ● yes · ○ not yet' : (start ? 'A place to begin: ' + start : 'Nothing marked “not yet.” Ask someone at the node whether they see it the same way.');
+    return '<div style="color:var(--gold);margin-bottom:6px">' + lead + '</div>' + rows;
+  }
+
+  function renderPanel() {
+    const s = STAGES[stage];
+    [...stepsEl.children].forEach((b, i) => b.setAttribute('aria-current', i === stage ? 'true' : 'false'));
+    contentEl.innerHTML =
+      '<div class="eyebrow"><span>' + String(stage + 1).padStart(2, '0') + ' / 08</span><span class="tag">' + s.tag + '</span></div>' +
+      '<h2>' + s.title + '</h2>' + s.body.map(p => '<p>' + p + '</p>').join('') +
+      '<div class="watch"><b>Watch:</b> ' + s.watch + '</div>' + ctrlHTML(s.ctrl) + quoteHTML(s.quote) + quoteHTML(s.quote2);
+    wire();
+    document.getElementById('prev').disabled = stage === 0;
+    document.getElementById('next').textContent = stage === STAGES.length - 1 ? 'Start over' : 'Next →';
+  }
+
+  function wire() {
+    contentEl.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { S.crossMode = b.dataset.mode; S.crossSel = 0; renderPanel(); });
+    contentEl.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { S.crossSel = +b.dataset.sel; renderPanel(); });
+    const pull = document.getElementById('pull'); if (pull) pull.onclick = () => { S.pulled = !S.pulled; renderPanel(); };
+    contentEl.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { S.pactMode = b.dataset.pm; S.callT = -1; renderPanel(); });
+    const call = document.getElementById('call'); if (call) call.onclick = () => { S.callT = 0; };
+    const step = document.getElementById('step'); if (step) step.onclick = () => { S.rung = Math.min(4, S.rung + 1); S.waiting = false; renderPanel(); };
+    const wait = document.getElementById('wait'); if (wait) wait.onclick = () => { S.waiting = true; };
+    const restart = document.getElementById('restart'); if (restart) restart.onclick = () => { S.rung = 0; S.waiting = false; MH[0].prog = 0; renderPanel(); };
+    contentEl.querySelectorAll('[data-sq]').forEach(b => b.onclick = () => { S.sqMode = b.dataset.sq; renderPanel(); });
+    contentEl.querySelectorAll('[data-bs]').forEach(b => b.onclick = () => { S.blindSel = +b.dataset.bs; renderPanel(); });
+    const fr = document.getElementById('friends'); if (fr) fr.oninput = () => { S.friends = +fr.value; document.getElementById('fcount').textContent = S.friends; document.getElementById('stepback').disabled = S.friends === 0; };
+    const sb = document.getElementById('stepback'); if (sb) sb.onclick = () => { S.friends = Math.max(0, S.friends - 1); renderPanel(); };
+    contentEl.querySelectorAll('[data-q]').forEach(b => b.onclick = () => {
+      const id = b.dataset.q; S.answers[id] = S.answers[id] === b.dataset.a ? undefined : b.dataset.a; if (!S.answers[id]) delete S.answers[id];
+      renderPanel();
+    });
+    const pat = document.getElementById('pattern'); if (pat) pat.innerHTML = patternHTML();
+  }
+
+  document.getElementById('prev').onclick = () => go(stage - 1);
+  document.getElementById('next').onclick = () => go(stage === STAGES.length - 1 ? 0 : stage + 1);
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT')) return;
+    if (e.key === 'ArrowRight') go(stage + 1);
+    if (e.key === 'ArrowLeft') go(stage - 1);
+  });
+
+  const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+  const ease = (x) => x * x * (3 - 2 * x);
+  const lerp = (a, b, k) => a + (b - a) * k;
+
+  // ---------- targets per panel ----------
+  function targets() {
+    const T = { root: { H: 1, M: 0.25, C: 0.6, D: 0.6 }, lit: { H: 0.7, M: 0.35, C: 0.45, D: 0.45 }, pillars: true, tilt: 0,
+      mh: [0, 0, 0, 0, 0], net: [0, 0], netFlow: 0, glow: 0, work: 0, gold: 0, gate: 0.1, visits: 0, load: 0, stones: 0, walker: 0, pact: 0, cd: [0, 0, 0], checks: 0, seed: 1 };
+    if (stage === 0) { T.cd = [1, 1, 0]; T.pact = 1; } // nothing moves between the meeting and the Hub until an invitation is extended and accepted
+    if (stage === 1) { T.root.H = S.pulled ? 0.04 : 1; T.tilt = S.pulled ? 1 : 0; T.lit.H = S.pulled ? 0.35 : 0.9; }
+    if (stage === 2) {
+      T.pact = 1; T.root.C = T.root.D = 0.8; const ch = S.pactMode === 'channels'; T.cd = ch ? [1, 1, 1] : [0, 0, 0];
+      if (S.callT >= 0) T.lit.D = ch ? (S.callT > 2.0 ? 1 : 0.45) : (S.callT > 1.6 ? 0.15 : 0.45);
+    }
+    if (stage === 3) {
+      T.stones = 1; T.walker = 1; T.root.M = 0.4;
+      if (S.rung >= 2) T.gate = 1;
+      T.mh[0] = S.rung >= 4 ? 1 : (S.rung === 3 ? 0.55 : 0);
+      T.work = S.rung >= 3 ? 1 : 0;
+      T.gold = S.rung >= 4 ? 1 : 0; // knowledge travels only through the gate, once the channel reaches it
+    }
+    if (stage === 4) {
+      const visit = S.sqMode === 'visit';
+      T.visits = visit ? 1 : 0; T.load = visit ? 1 : 0; T.lit.H = visit ? 0.3 : 0.95;
+      T.mh[0] = visit ? 0 : 1; T.work = visit ? 0 : 1; T.gate = visit ? 0.1 : 1;
+    }
+    if (stage === 5) { T.mh[0] = 1; T.gate = 1; T.work = 1; T.gold = 1; T.checks = 1; T.cd = [1, 1, 0]; T.net = [1, 1]; T.netFlow = 1; T.root.M = 0.6; T.root.C = T.root.D = 0.8; T.glow = 1; } // C and D link with each other and the meeting, never directly with the Hub
+    if (stage === 6) {
+      for (let i = 0; i < 5; i++) T.mh[i] = i < S.friends ? 1 : 0;
+      T.gate = S.friends > 0 ? 1 : 0.1; T.work = S.friends > 0 ? 1 : 0; T.gold = S.friends > 0 ? 1 : 0;
+      T.root.M = 0.25 + S.friends * 0.12; T.lit.M = 0.3 + S.friends * 0.12;
+    }
+    if (stage === 7) { T.mh = [1, 1, 1, 0, 0]; T.gate = 1; T.work = 1; T.gold = 1; T.cd = [1, 1, 1]; T.net = [1, 1]; T.netFlow = 1; T.pact = 1; T.root.M = 0.6; T.lit.M = 0.6; } // C and D link to the meeting, never to the Hub
+    return T;
+  }
+
+  const LAB = [
+    ['nodeH', 'nodeM', 'nodeC', 'nodeD', 'seed', 'roots', 'gate', 'pact'],
+    ['nodeH', 'seed', 'roots'],
+    ['nodeC', 'nodeD', 'pact'],
+    ['nodeH', 'nodeM', 'gate', 'seed', 'rung0', 'rung1', 'rung2', 'rung3'],
+    ['nodeH', 'nodeM', 'load', 'gate'],
+    ['nodeH', 'nodeM', 'nodeC', 'nodeD', 'gate', 'seed', 'noC', 'noD'],
+    ['nodeH', 'nodeM', 'gate', 'seed'],
+    ['nodeH', 'nodeM', 'nodeC', 'nodeD']
+  ];
+
+  // ---------- resize ----------
+  function resize() {
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / Math.max(1, h); camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+
+  // ---------- loop ----------
+  const clock = new THREE.Clock(); let time = 0; const v = new THREE.Vector3();
+  function frame() {
+    const dt = Math.min(0.05, clock.getDelta()); time += dt * (REDUCED ? 0.4 : 1); st += dt;
+    const T = targets(); const k = Math.min(1, dt * 2.5);
+
+    if (camAnim) {
+      camAnim.t = Math.min(1, camAnim.t + dt / 1.4); const e = ease(camAnim.t);
+      camera.position.lerpVectors(camAnim.from.p, camAnim.to.p, e);
+      if (controls) controls.target.lerpVectors(camAnim.from.t, camAnim.to.t, e); else camera.lookAt(camAnim.to.t);
+      if (camAnim.t >= 1) camAnim = null;
+    }
+    if (controls) { controls.autoRotate = optRotate.checked && !camAnim; controls.update(); }
+
+    // nodes, roots, pillars
+    NODES.forEach(n0 => {
+      const n = N[n0.key];
+      n.root = lerp(n.root, T.root[n.key], k); n.lit = lerp(n.lit, T.lit[n.key], k);
+      n.rootMats.forEach(m => { m.opacity = 0.05 + 0.7 * n.root; m.emissiveIntensity = 0.05 + 0.25 * n.root; });
+      n.baseMat.emissiveIntensity = 0.04 + 0.22 * n.lit;
+      n.figMat.emissive.setHex(0xd9a05b); n.figMat.emissiveIntensity = 0.05 + 0.2 * n.lit;
+      n.pillars.forEach((p, j) => {
+        p.cur = lerp(p.cur, p.built, Math.min(1, dt * 1.4));
+        p.mesh.visible = p.cur > 0.01; p.mesh.scale.y = Math.max(0.001, ease(clamp(p.cur)));
+        const tilt = n.key === 'H' ? T.tilt : 0;
+        p.mesh.rotation.z = lerp(p.mesh.rotation.z, tilt * p.tilt + (tilt ? Math.sin(time * 2.4 + j) * 0.05 : 0), k);
+        p.mesh.rotation.x = lerp(p.mesh.rotation.x, tilt * p.tiltB, k);
+        p.mesh.position.y = lerp(p.mesh.position.y, 0.22 - tilt * 0.35, k);
+        p.mat.emissiveIntensity = 0.1 + 0.3 * n.lit;
+      });
+    });
+    // knowledge light at the Hub
+    const pulse = 1 + Math.sin(time * 2) * 0.06; seedMesh.scale.setScalar(pulse); seedHalo.material.opacity = 0.45 + Math.sin(time * 2) * 0.1;
+
+    // gate
+    gateMat.opacity = lerp(gateMat.opacity, T.gate, k); gate.scale.setScalar(1 + (T.gate > 0.5 ? Math.sin(time * 3) * 0.05 : 0));
+
+    // meeting-to-hub channels
+    MH.forEach((ch, i) => {
+      ch.prog = lerp(ch.prog, T.mh[i], Math.min(1, dt * (stage === 3 ? 1.2 : 2.2)));
+      ch.geo.setDrawRange(0, Math.floor(ch.prog * ch.total / 6) * 6);
+      ch.work.limit = ch.prog; ch.work.target = T.work && ch.prog > 0.05 ? 0.9 : 0; ch.work.update(time, dt);
+      // gold rides the reversed curve: it starts at the Hub, passes the gate, and only once the channel is whole
+      ch.gold.limit = 1; ch.gold.target = T.gold && ch.prog > 0.97 && gateMat.opacity > 0.6 ? 0.95 : 0; ch.gold.update(time, dt);
+    });
+
+    // glow on the meeting–Hub channel
+    {
+      const g = T.glow ? 0.32 + 0.16 * Math.sin(time * 2.6) : 0;
+      glowMat.opacity = lerp(glowMat.opacity, g, k); glowTube.visible = glowMat.opacity > 0.01;
+      glowGeo.setDrawRange(0, Math.floor(MH[0].prog * glowTotal / 6) * 6);
+      MH[0].mat.emissiveIntensity = lerp(MH[0].mat.emissiveIntensity, T.glow ? 1.3 : 0.4, k);
+      MH[0].mat.opacity = lerp(MH[0].mat.opacity, T.glow ? 0.85 : 0.5, k);
+      MH[0].mat.emissive.setHex(T.glow ? 0xffc451 : C.copper);
+    }
+    // checkpoints
+    CHECKS.forEach((c, i) => {
+      const on = T.checks ? (i === S.blindSel ? 1 : 0.28) : 0;
+      c.mat.opacity = lerp(c.mat.opacity, on, k); c.m.visible = c.mat.opacity > 0.02;
+      const sc = i === S.blindSel && T.checks ? 1.25 + Math.sin(time * 4) * 0.12 : 1; c.m.scale.setScalar(sc);
+      c.mat.color.setHex(i === S.blindSel ? 0xf2c94c : 0xf4ead8);
+    });
+
+    // visits and load
+    visits.forEach(f => { f.target = T.visits * 0.9; f.update(time, dt); });
+    loadRing.material.opacity = lerp(loadRing.material.opacity, T.load * (0.55 + Math.sin(time * 5) * 0.3), k); loadRing.visible = loadRing.material.opacity > 0.02;
+
+    // ladder
+    stones.forEach((s, i) => {
+      s.mat.opacity = lerp(s.mat.opacity, T.stones, k); s.m.visible = s.mat.opacity > 0.02;
+      const reached = i < S.rung, next = i === S.rung;
+      const glow = reached ? 0.55 : (next ? 0.3 + 0.3 * Math.sin(time * 4) : 0.04);
+      s.mat.emissive.setHex(reached ? 0xd9a05b : 0x9cbf8f); s.mat.emissiveIntensity = lerp(s.mat.emissiveIntensity, glow, Math.min(1, dt * 6));
+    });
+    walkerMat.opacity = lerp(walkerMat.opacity, T.walker, k); walker.visible = walkerMat.opacity > 0.02;
+    {
+      const target = S.rung === 0 ? WALK_HOME : stones[S.rung - 1].m.position.clone().add(new THREE.Vector3(0, 0.12 + (S.rung - 1) * 0.06, 0));
+      walker.position.lerp(target, Math.min(1, dt * 2.2));
+      walker.position.y = target.y + (walker.position.distanceTo(target) > 0.1 ? Math.abs(Math.sin(time * 9)) * 0.12 : 0);
+      walkerMat.emissive.setHex(S.waiting ? 0xd26d47 : 0xd9a05b);
+      walkerMat.emissiveIntensity = S.waiting ? 0.15 + 0.15 * Math.sin(time * 3) : 0.25;
+    }
+
+    // pact and C–D channels
+    pactMat.opacity = lerp(pactMat.opacity, T.pact * 0.85, k);
+    CDch.forEach((ch, i) => { ch.prog = lerp(ch.prog, T.cd[i], Math.min(1, dt * 2)); ch.geo.setDrawRange(0, Math.floor(ch.prog * ch.total / 6) * 6);
+      ch.fwd.limit = ch.prog; ch.fwd.target = T.netFlow && ch.prog > 0.05 ? 0.85 : 0; ch.fwd.update(time, dt);
+      ch.back.limit = 1; ch.back.target = T.netFlow && ch.prog > 0.97 ? 0.85 : 0; ch.back.update(time, dt); });
+    NET.forEach((ch, i) => { ch.prog = lerp(ch.prog, T.net[i], Math.min(1, dt * 1.6)); ch.geo.setDrawRange(0, Math.floor(ch.prog * ch.total / 6) * 6);
+      ch.fwd.limit = ch.prog; ch.fwd.target = T.netFlow && ch.prog > 0.05 ? 0.85 : 0; ch.fwd.update(time, dt);
+      ch.back.limit = 1; ch.back.target = T.netFlow && ch.prog > 0.97 ? 0.85 : 0; ch.back.update(time, dt); });
+    let dOp = 0;
+    if (stage === 2 && S.callT >= 0) {
+      S.callT += dt; const t = S.callT;
+      if (S.pactMode === 'pact') {
+        const u = clamp(t / 1.6); pactCurve.getPoint(u, pactPulse.position); pactPulse.material.opacity = u < 1 ? 1 : Math.max(0, 1 - (t - 1.6) * 2);
+        if (t > 1.6) dOp = Math.max(0, 0.9 - (t - 1.6) * 0.5);
+        chPulses.forEach(p => p.material.opacity = 0); backPulses.forEach(p => p.material.opacity = 0);
+      } else {
+        pactPulse.material.opacity = 0;
+        CDch.forEach((ch, i) => {
+          const u = clamp((t - i * 0.15) / 1.8); ch.curve.getPoint(u, chPulses[i].position); chPulses[i].material.opacity = u > 0 && u < 1 ? 1 : 0;
+          const b = clamp((t - 2.1 - i * 0.15) / 1.8); ch.rev.getPoint(b, backPulses[i].position); backPulses[i].material.opacity = b > 0 && b < 1 ? 1 : 0;
+        });
+      }
+      if (t > 5) S.callT = -1;
+    } else { pactPulse.material.opacity = 0; chPulses.forEach(p => p.material.opacity = 0); backPulses.forEach(p => p.material.opacity = 0); }
+    dFlash.material.opacity = lerp(dFlash.material.opacity, dOp * (0.6 + 0.4 * Math.sin(time * 8)), Math.min(1, dt * 8)); dFlash.visible = dFlash.material.opacity > 0.02;
+
+    // readouts
+    if (stage === 1) { const r = document.getElementById('layerread'); const msg = S.pulled ? 'The pillars are still there. Nobody can carry them together under pressure.' : ''; if (r && r.textContent !== msg) r.textContent = msg; }
+    if (stage === 2) {
+      const r = document.getElementById('callread'); let msg = '';
+      if (S.callT >= 0) msg = S.pactMode === 'pact' ? (S.callT > 1.6 ? 'The call reaches the office of node D. Nobody there knows anyone at C well enough to hear it correctly.' : 'The call travels along the pact…') : (S.callT > 2.0 ? 'Three people at D already know people at C. The call is heard, understood, and answered.' : 'The call travels along three relationships at once…');
+      if (r && msg && r.textContent !== msg) r.textContent = msg;
+    }
+    if (stage === 3) {
+      const r = document.getElementById('rungread');
+      let msg = S.waiting ? (S.rung === 0 ? 'The open door has been open all along. Waiting here looks like humility and cannot be told apart from absence.' : 'Waiting at the wrong rung. The next one is already open to you.')
+        : ['You are at home. The first rung needs nobody’s permission.', 'Rung 1. You are present, and doing nothing else yet.', 'Rung 2. The gate lights: the Hub’s standing invitation to a form of work.', 'Rung 3. The channel is being built from the Hub’s side of the work, under its direction.', 'Rung 4. The channel connects through the gate. Knowledge and work now move both ways.'][S.rung];
+      if (r && r.textContent !== msg) r.textContent = msg;
+    }
+    if (stage === 6) {
+      const r = document.getElementById('noderead'); const n = S.friends;
+      const msg = n === 0 ? 'No one can answer. The meeting is still at the first rung, and that is the place to start.' : n === 1 ? 'One person can answer. The relational layer has a single point of failure.' : n === 2 ? 'Two Friends hold channels, as in the post. One more beginning at the open door would make a support node of three.' : n + ' Friends hold their own channels. The relational layer is in place.';
+      if (r && r.textContent !== msg) r.textContent = msg;
+    }
+
+    // labels
+    stackEl.hidden = stage !== 1;
+    const want = new Set(optLabels.checked ? LAB[stage] : []);
+    if (stage === 4 && S.sqMode !== 'visit') want.delete('load');
+    if (stage === 4 && S.sqMode === 'visit') want.delete('gate');
+    if (stage === 3 && S.rung < 2) want.delete('gate');
+    if (stage === 6 && S.friends === 0) want.delete('gate');
+    const w = wrap.clientWidth, h = wrap.clientHeight; const groupCount = {}, groupTotal = {};
+    for (const key in LABELS) if (want.has(key) && LABELS[key].group) groupTotal[LABELS[key].group] = (groupTotal[LABELS[key].group] || 0) + 1;
+    for (const key in LABELS) {
+      const L = LABELS[key];
+      if (want.has(key) && L.group) { L.stack = groupCount[L.group] || 0; groupCount[L.group] = L.stack + 1; }
+      if (want.has(key)) {
+        v.copy(L.getPos()).project(camera);
+        const visible = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
+        const hw = (L.el.offsetWidth || 0) / 2 + 8; const lh = L.el.offsetHeight || 0;
+        const px = Math.max(hw, Math.min(w - hw, (v.x * 0.5 + 0.5) * w));
+        let py = (-v.y * 0.5 + 0.5) * h;
+        if (L.below) { py = Math.max(84, Math.min(h - lh - 66, py)) + L.stack * (lh + 4); L.el.style.transform = 'translate(' + px + 'px,' + py + 'px) translate(-50%,0)'; }
+        else { py = Math.max(lh + 84, Math.min(h - 40, py)); L.el.style.transform = 'translate(' + px + 'px,' + py + 'px) translate(-50%,-100%)'; }
+        L.el.classList.toggle('on', visible);
+      } else L.el.classList.remove('on');
+    }
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+
+  resize(); go(0); frame();
+})();
+</script>
+
+</body></html>
